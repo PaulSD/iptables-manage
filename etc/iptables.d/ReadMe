@@ -1,0 +1,78 @@
+The *.rules files in this directory and any subdirectories are read or executed
+by the `ip46tables-manage load` script, which is called by
+`netfilter-persistent` before the network is configured at boot time.
+
+iptables commands in non-executable *.rules files are read and executed to
+configure rules.  While it is currently possible to use environment variables
+and put non-iptables commands in these files, this is not recommended as future
+versions of ip46tables-manage will likely use `nft -f` or something similar to
+load the rules, in which case any environment variables or non-iptables commands
+will cause problems.
+
+Executable *.rules files are executed, and iptables commands printed to STDOUT
+are read and executed to configure rules.  This may be used to dynamically
+generate rules or to apply different rule sets depending on the current
+operating environment.  The file is expected to return an exit status of 0; If a
+non-zero exit status is returned, any STDOUT output is discarded and
+ip46tables-manage will skip the file and continue.  Any STDERR output is passed
+through by ip46tables-manage (and is typically displayed to the user).
+
+Files whose name does not end with '.rules' are ignored.
+
+For convenience and clarity, ip46tables-manage defines `ip4tables` and
+`ip46tables` commands which may be used in the rules files.  `ip4tables` is an
+alias for `iptables`.  `ip46tables` runs both `iptables` and `ip6tables` with
+the same arguments.
+
+Files are read/executed in lexical order using their full path name.  In other
+words, the following file names would be sourced in the order shown:
+A-First.rules
+B-SubDir/D-Second.rules
+B-SubDir/E-Third.rules
+C-Fourth.rules
+
+In general, most firewall rules seem to fall into one of a few categories, and
+these categories need to be ordered relative to each other, but unrelated groups
+of rules within each category generally do not need to be ordered relative to
+each other.  Therefore, to reduce the need to carefully order unrelated rules
+files, it is recommended that chains be configured for each category using
+ordered files whose names begin with a number, and rules be added to those
+chains using unordered files whose names begins with a letter.
+
+To facilitate this, the following files/chains are configured by default:
+05_Block.rules : IBlock OBlock FBlock IFBlock
+  For rules that explicitly reject/drop unwanted packets.  For example, this may
+  be used to block all traffic from a malicious IP address, or to block the use
+  of an unwanted protocol that might otherwise match other rules below.  Rules
+  added to IBlock, OBlock, and FBlock apply to INPUT, OUTPUT, and FORWARD
+  packets respectively.  Rules added to IFBlock apply to both INPUT and FORWARD
+  packets.
+15_Monitor.rules : IMonitor OMonitor FMonitor
+  For log or ulogd rules used for monitoring/debugging.
+35_Interfaces.rules : IInterfaces OInterfaces FInterfaces
+  For rules that apply generically to an interface and should not be subject to
+  validation.  For example, rules to accept all loopback (lo interface) traffic,
+  rules to allow or deny FORWARD traffic on an interface, and/or rules to
+  require that all traffic on an interface be protected by IPsec.
+55_Validate.rules : IValidate OValidate FValidate Validate
+  For rules to sanity check / validate proper connection state and behavior.
+  For example, this may be used to drop INVALID packets or accept ESTABLISHED /
+  RELATED packets.  Many users do not configure OUTPUT rules, so rules added to
+  the Validate chain apply only to INPUT and FORWARD packets by default.
+  However, if OUTPUT rules are configured, the Validate chain may be applied to
+  OUTPUT packets as well.
+75_Normal.rules : INormal ONormal FNormal
+  For typical rules that explicitly allow packets/connections or reject/drop
+  connections after the Monitor/Interfaces/Validate rules are applied.
+95_NoMatch.rules : INoMatch ONoMatch FNoMatch NoMatch
+  For rules that should be applied after all of the above rules.  For example,
+  rules that log and/or reject/drop any packets that are not explicitly allowed
+  above.  Similar to the Validate chain, the NoMatch chain is applied only to
+  INPUT and FORWARD packets by default, but it may be applied to OUTPUT packets
+  as well.
+Additional numbered files may be added to configure additional chains that will
+be evaluated before/between/after the above chains.
+
+Base_*.rules files are also configured by default to apply a basic rule set.
+These files may be modified if the default rules need adjustment.  However,
+additional rules should be added using separate non-numbered files.

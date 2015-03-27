@@ -1,0 +1,24 @@
+# Some ICMP packets are required for core protocol functionality such as Path
+# MTU Discovery, and dropping or rejecting them may cause strange and hard to
+# debug problems.  Those required ICMP packets will match this rule, as they are
+# RELATED to other non-ICMP connections.  If this rule is disabled or not used
+# in certain cases, it is important to ensure that some other rule is used to
+# ACCEPT those ICMP packets.  (ping does not match this rule and always requires
+# a separate rule, however it is not strictly required like other ICMP packets.)
+ip46tables --append Validate --match conntrack --ctstate ESTABLISHED,RELATED --jump ACCEPT
+
+# Drop INVALID packets, except INVALID SYN which must be rejected to prevent spoofing
+# (See http://www.frozentux.net/iptables-tutorial/iptables-tutorial.html#SYNACKANDNEW )
+# (Don't log closing FIN or RST packets that are marked INVALID)
+ip46tables --append Validate --match conntrack ! --ctstate NEW --protocol TCP --tcp-flags SYN SYN --match limit --limit 6/m --jump LOG --log-prefix 'iptables INVALID: '
+ip46tables --append Validate --match conntrack ! --ctstate NEW --protocol TCP --tcp-flags SYN SYN --jump REJECT --reject-with tcp-reset
+ip46tables --append Validate --match conntrack ! --ctstate NEW --protocol TCP --tcp-flags FIN,RST NONE --match limit --limit 6/m --jump LOG --log-prefix 'iptables INVALID: '
+ip46tables --append Validate --match conntrack ! --ctstate NEW --protocol TCP --jump DROP
+ip46tables --append Validate --match conntrack ! --ctstate NEW,UNTRACKED --match limit --limit 6/m --jump LOG --log-prefix 'iptables INVALID: '
+ip46tables --append Validate --match conntrack ! --ctstate NEW,UNTRACKED --jump DROP
+
+# Drop TCP packets (other than SYN) that aren't associated with an established connection
+# (See http://www.frozentux.net/iptables-tutorial/iptables-tutorial.html#NEWNOTSYN )
+# (Don't log closing ACK packets that are marked NEW)
+ip46tables --append Validate --protocol TCP ! --syn --match tcp ! --tcp-flags SYN,ACK,FIN,RST ACK --match limit --limit 6/m --jump LOG --log-prefix 'iptables NEW \!SYN: '
+ip46tables --append Validate --protocol TCP ! --syn --jump DROP

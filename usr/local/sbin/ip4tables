@@ -1,0 +1,4 @@
+#!/bin/sh
+# xtables-multi detects the command that was run, so we cannot simply symlink ip4tables to
+# iptables or xtables-multi
+/sbin/iptables "$@"

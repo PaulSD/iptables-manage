@@ -1,0 +1,7 @@
+ip46tables --new-chain INormal
+ip46tables --new-chain ONormal
+ip46tables --new-chain FNormal
+
+ip46tables --append INPUT --jump INormal
+ip46tables --append OUTPUT --jump ONormal
+ip46tables --append FORWARD --jump FNormal

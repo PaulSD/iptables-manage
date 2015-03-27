@@ -1,0 +1,7 @@
+ip46tables --new-chain IInterfaces
+ip46tables --new-chain OInterfaces
+ip46tables --new-chain FInterfaces
+
+ip46tables --append INPUT --jump IInterfaces
+ip46tables --append OUTPUT --jump OInterfaces
+ip46tables --append FORWARD --jump FInterfaces

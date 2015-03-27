@@ -1,0 +1,12 @@
+ip46tables --new-chain IBlock
+ip46tables --new-chain OBlock
+ip46tables --new-chain FBlock
+
+ip46tables --new-chain IFBlock
+
+ip46tables --append INPUT --jump IBlock
+ip46tables --append OUTPUT --jump OBlock
+ip46tables --append FORWARD --jump FBlock
+
+ip46tables --append IBlock --jump IFBlock
+ip46tables --append FBlock --jump IFBlock

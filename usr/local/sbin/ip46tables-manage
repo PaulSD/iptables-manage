@@ -1,0 +1,362 @@
+#!/bin/bash
+
+ScriptName="$(basename "$0")"
+Usage()
+{
+  if [ -n "$1" ] ; then
+    echo "ERROR: $1" >&2
+    echo >&2
+  fi
+  cat <<END >&2
+Usage: $ScriptName <command> [options]
+
+Commands:
+
+  load             Flush chains/rules in all tables, then compile and load rules
+                   from /etc/iptables.d/ (See /etc/iptables.d/ReadMe)
+
+  flush <table>    Flush chains/rules in the specified table (filter, nat, etc)
+  flush-all        Flush chains/rules in all tables
+
+  diff             Show changes made to the running rules since the last call to
+                   'load'
+
+  For compatibility with netfilter-persistent and SysV-style init scripts,
+  'start', 'restart', 'reload', and 'force-reload' are aliases for 'load',
+  'flush' (with no table specified) is an alias for 'flush filter',
+  'stop' does nothing except notify the user that they probably want to use
+  'flush filter' or 'flush-all' instead, and 'save' instructs the user to use
+  'diff' and manually update the files in /etc/iptables.d/ as needed.
+
+Options:
+
+  -v, --verbose    Display flush commands and compiled rule set
+
+  -n, --dry-run    Do not actually flush/load rules (implies '-v')
+
+  -s, -y, --side-by-side
+                   With 'diff', print a side-by-side diff instead of the default
+                   lists of removed and added rules
+
+END
+  exit 1
+}
+
+# Ensure this script is being run as root
+if [ $(id -u) -ne 0 ] ; then
+  echo "This script must be run as root" >&2
+  exit 1
+fi
+
+# Partial file name, used as a template for rules files created by this script
+RulesFilesBaseName='ip46tables-manage.rules'
+# Path under which rules files will be saved for later use by 'diff' (Should end with '/')
+SavedRulesPath='/run/'
+
+# Parse command-line arguments
+[ $# -eq 0 ] && Usage
+Command=
+Table=
+case $1 in
+  load|start|restart|reload|force-reload)
+    Command='load'
+  ;;
+  flush)
+    Command='flush'
+    if [ $# -eq 1 -o "${2:0:1}" = '-' ] ; then
+      cat <<END >&2
+To avoid breaking any systems which depend on this system's NAT rules, only the
+'filter' table will be flushed.  To flush all tables, use
+\`$ScriptName flush-all\`.  To silence this warning, use
+\`$ScriptName flush filter\`.
+END
+      Table='filter'
+    else
+      shift
+      Table="$1"
+      case $Table in
+      filter|nat|mangle|raw|security)
+      ;;
+      *)
+        Usage "Invalid table name '$Table'"
+      ;;
+      esac
+    fi
+  ;;
+  flush-all)
+    Command='flush-all'
+  ;;
+  diff)
+    Command='diff'
+  ;;
+  stop)
+    # Stop is called when the netfilter-persistent package is upgraded, but we don't really want to
+    # flush iptables during package upgrades.  Therefore, we require the user to explicitly call
+    # 'flush filter' or 'flush-all' if they want to flush iptables rules.
+    cat <<END
+\`$ScriptName stop\` does not do anything.
+Use \`$ScriptName flush filter\` to flush filter rules without affecting NAT
+rules (to avoid breaking any systems which depend on this system's NAT rules),
+or use \`$ScriptName flush-all\` to flush rules in all tables.
+END
+    exit 0
+  ;;
+  save)
+    cat <<END
+iptables rules cannot be automatically saved when managed via /etc/iptables.d/.
+Use \`$ScriptName diff\` to identify any changes made to the running rules since
+the last call to \`$ScriptName load\`, then manually update the files in
+/etc/iptables.d/ as needed.
+END
+    exit 1
+  ;;
+  -h|--help)
+    Usage
+  ;;
+  -*)
+    Usage
+  ;;
+  *)
+    Usage "Invalid command '$1'"
+  ;;
+esac
+shift
+Verbose='n'
+DryRun='n'
+SideBySide='n'
+while [ $# -gt 0 ] ; do
+  case $1 in
+    -v|--verbose)
+      Verbose='y'
+    ;;
+    -n|--dry-run)
+      DryRun='y'
+      Verbose='y'
+    ;;
+    -s|-y|--side-by-side)
+      [ "$Command" = 'diff' ] || Usage "'$1' can only be used with 'diff'"
+      SideBySide='y'
+    ;;
+    -h|--help)
+      Usage
+    ;;
+    *)
+      Usage "Invalid option '$1'"
+    ;;
+  esac
+  shift
+done
+
+# Aliases/wrappers for iptables commands, for use in this script and in rules files.
+# In addition to adding new commands, this also allows us to avoid path searching with adding an
+# explicit path to every iptables command.
+# '|| return $?' is used to suppress duplicate calls to the ERR trap when loading the compiled rules
+# file (see the comments on the ERR trap below).
+ip4tables()
+{
+  /sbin/iptables "$@"
+}
+iptables()
+{
+  /sbin/iptables "$@"
+}
+ip6tables()
+{
+  /sbin/ip6tables "$@"
+}
+ip46tables()
+{
+  /sbin/iptables "$@" ; RET=$?
+  /sbin/ip6tables "$@" ; RET=$(($RET?$RET:$?))
+  return $RET
+}
+
+# Functions to compile flush commands and rule set and to run the compiled commands/rules
+# These are compiled in a file instead of being run directly so we can run/load them as an atomic
+# transaction using `nft -f` after we move to nftables.
+start_compile()
+{
+  set -e
+  RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
+  chmod o-rwx "$RulesFile"
+  set +e
+}
+flush_table()
+{
+  local Command="$1"
+  local Table="$2"
+  echo "$Command -t '$Table' --flush" >> "$RulesFile"
+  echo "$Command -t '$Table' --delete-chain" >> "$RulesFile"
+  echo "$Command -t '$Table' --zero" >> "$RulesFile"
+  for Chain in $($Command -t "$Table" -S | grep -- '-P' | cut -d ' ' -f 2) ; do
+    echo "$Command -t '$Table' --policy '$Chain' ACCEPT" >> "$RulesFile"
+  done
+}
+flush()
+{
+  local Table="$1"
+  grep -l "$Table" /proc/net/ip_tables_names &>/dev/null && flush_table ip4tables "$Table"
+  grep -l "$Table" /proc/net/ip6_tables_names &>/dev/null && flush_table ip6tables "$Table"
+}
+flush_all()
+{
+  for Table in $(sort /proc/net/ip_tables_names 2>/dev/null) ; do
+    flush_table ip4tables "$Table"
+  done
+  for Table in $(sort /proc/net/ip6_tables_names 2>/dev/null) ; do
+    flush_table ip6tables "$Table"
+  done
+}
+# Safely obtain the list of /etc/iptables.d/*/*.rules files to load/run
+# (Properly handle path/file names containing spaces, newlines, and other odd characters)
+find_files()
+{
+  unset Files ; local File ; local i ; local IFS=
+  while read -u3 -r -d $'\0' File ; do
+    Files[i++]="$File"
+  done 3< <(find -L /etc/iptables.d/ -type f -name '*.rules' -print0 | sort --zero-terminated)
+}
+Error='n'
+load()
+{
+  find_files
+  local Index ; local RET
+  for Index in "${!Files[@]}" ; do
+    if [ ! -x "${Files[Index]}" ] ; then
+      # Append non-executable files to the rules file
+      cat "${Files[Index]}" >> "$RulesFile"
+    else
+      # Run executable files
+      TempRulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
+      chmod o-rwx "$TempRulesFile"
+      "${Files[Index]}" > "$TempRulesFile" ; RET=$?
+      # If exit status is 0, append the output to the rules file
+      if [ $RET -eq 0 ] ; then
+        cat "$TempRulesFile" >> "$RulesFile"
+      else
+        Error='y'
+        echo "${Files[Index]} returned exit status $RET, will ignore and continue" >&2
+      fi
+      rm -f "$TempRulesFile"
+    fi
+  done
+}
+run_compiled()
+{
+  [ "$Verbose" = 'y' ] && cat "$RulesFile"
+
+  if [ "$DryRun" = 'y' ] ; then
+    echo -e '\n\n\n... Dry Run, no rules applied ...'
+  else
+    # Print a message and adjust the exit status if any errors occur
+    on_error()
+    {
+      local Func="$1" ; local Command="$2"
+      # This trap is called on return from the iptables functions above and `source` below if the
+      # exit status of the last command in the function or sourced file is non-zero, in addition to
+      # being called for the command itself.  Ignore those additional calls.
+      [ "$Func" = 'source' -o "$Command" != "${Command#source }" ] && return 0
+      Error='y'
+      echo "Error running: $Command" >&2
+    }
+    trap 'on_error "${FUNCNAME[0]}" "$(eval echo "$BASH_COMMAND")"' ERR ; set -E
+    source "$RulesFile"
+    trap - ERR ; set +E
+  fi
+
+  rm -f "$RulesFile"
+  unset RulesFile
+}
+
+# Functions used to implement 'diff'
+SavedRulesFile="$SavedRulesPath$RulesFilesBaseName"
+save()
+{
+  local RulesFile="$1"
+  [ -e "$RulesFile" ] || : > "$RulesFile"  # Create the rules file if necessary
+  chmod o-rwx "$RulesFile"
+
+  local ip4RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip4.XXX")"
+  chmod o-rwx "$ip4RulesFile"
+  for Table in $(sort /proc/net/ip_tables_names 2>/dev/null || :) ; do
+    ip4tables -t "$Table" -S | while read Line ; do
+      echo "-t \"$Table\" $Line"
+    done
+  done > "$ip4RulesFile"
+
+  local ip6RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip6.XXX")"
+  chmod o-rwx "$ip6RulesFile"
+  for Table in $(sort /proc/net/ip6_tables_names 2>/dev/null || :) ; do
+    ip6tables -t "$Table" -S | while read Line ; do
+      echo "-t \"$Table\" $Line"
+    done
+  done > "$ip6RulesFile"
+
+  # Strip some default parameters that don't need to be specified (because they are defaults) and
+  # that vary between IP4 and IP6 rules (and thus mess up the merge)
+  perl -i -p \
+   -e 's/\s+--reject-with\s+icmp-port-unreachable[ \t]*//;' \
+   -e 's/\s+--connlimit-mask\s+32[ \t]*//;' \
+   "$ip4RulesFile"
+  perl -i -p \
+   -e 's/\s+--reject-with\s+icmp6-port-unreachable[ \t]*//;' \
+   -e 's/\s+--connlimit-mask\s+128[ \t]*//;' \
+   "$ip6RulesFile"
+
+  # Merge the IP4 and IP6 rules
+  diff --text --minimal --old-line-format='ip4tables %L' --new-line-format='ip6tables %L' \
+   --unchanged-line-format='ip46tables %L' "$ip4RulesFile" "$ip6RulesFile" > "$RulesFile" || :
+
+  rm -f "$ip4RulesFile" "$ip6RulesFile"
+}
+diff_rules()
+{
+  # If 'load' has not been called, print all current rules (compare against an empty file)
+  [ -e "$SavedRulesFile" ] || : > "$SavedRulesFile"
+
+  # Save the current rules to a temp file
+  local CurRulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
+  save "$CurRulesFile"
+
+  # Compare the rules saved by 'load' vs the current rules
+  if [ "$SideBySide" = 'n' ] ; then
+    echo 'Removed Rules:'
+    diff --text --minimal --old-line-format='%L' --new-line-format='' --unchanged-line-format='' \
+     "$SavedRulesFile" "$CurRulesFile" || :
+    echo 'Added Rules:'
+    diff --text --minimal --old-line-format='' --new-line-format='%L' --unchanged-line-format='' \
+     "$SavedRulesFile" "$CurRulesFile" || :
+  else
+    diff -y --text --minimal "$SavedRulesFile" "$CurRulesFile" || :
+  fi
+
+  rm -f "$CurRulesFile"
+}
+
+# Perform the specified command
+case $Command in
+  load)
+    start_compile
+    flush_all
+    echo -n -e '\n\n\n' >> "$RulesFile"
+    load
+    run_compiled
+    save "$SavedRulesFile"
+  ;;
+  flush)
+    start_compile
+    flush "$Table"
+    run_compiled
+  ;;
+  flush-all)
+    start_compile
+    flush_all
+    run_compiled
+    rm -f "$SavedRulesFile"
+  ;;
+  diff)
+    diff_rules
+  ;;
+esac
+
+[ "$Error" = 'n' ] && exit 0 || exit 2

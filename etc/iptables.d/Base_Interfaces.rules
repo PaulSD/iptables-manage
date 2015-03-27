@@ -1,0 +1,3 @@
+# Accept all INPUT loopback (lo) traffic, without running it through the
+# Validate chain
+ip46tables --append IInterfaces --in-interface lo --jump ACCEPT

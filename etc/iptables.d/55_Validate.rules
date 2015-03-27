@@ -1,0 +1,15 @@
+ip46tables --new-chain IValidate
+ip46tables --new-chain OValidate
+ip46tables --new-chain FValidate
+
+ip46tables --new-chain Validate
+
+ip46tables --append INPUT --jump IValidate
+ip46tables --append OUTPUT --jump OValidate
+ip46tables --append FORWARD --jump FValidate
+
+# Many users do not configure OUTPUT rules, so Validate is only applied to INPUT
+# and FORWARD packets by default.  If OUTPUT rules are configured, you may want
+# add Validate to OValidate as well.
+ip46tables --append IValidate --jump Validate
+ip46tables --append FValidate --jump Validate

@@ -1,0 +1,7 @@
+ip46tables --new-chain IMonitor
+ip46tables --new-chain OMonitor
+ip46tables --new-chain FMonitor
+
+ip46tables --append INPUT --jump IMonitor
+ip46tables --append OUTPUT --jump OMonitor
+ip46tables --append FORWARD --jump FMonitor
