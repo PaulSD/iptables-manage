@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Partial file name, used as a template for rules files created by this script
+RulesFilesBaseName='ip46tables-manage.rules'
+# Path under which rules files will be saved for later use by 'diff' (Should end with '/')
+DiffRulesPath='/run/'
+
 ScriptName="$(basename "$0")"
 Usage()
 {
@@ -47,11 +52,6 @@ if [ $(id -u) -ne 0 ] ; then
   echo "This script must be run as root" >&2
   exit 1
 fi
-
-# Partial file name, used as a template for rules files created by this script
-RulesFilesBaseName='ip46tables-manage.rules'
-# Path under which rules files will be saved for later use by 'diff' (Should end with '/')
-SavedRulesPath='/run/'
 
 # Parse command-line arguments
 [ $# -eq 0 ] && Usage
@@ -148,7 +148,7 @@ while [ $# -gt 0 ] ; do
 done
 
 # Aliases/wrappers for iptables commands, for use in this script and in rules files.
-# In addition to adding new commands, this also allows us to avoid path searching with adding an
+# In addition to adding new commands, this also allows us to avoid path searching without adding an
 # explicit path to every iptables command.
 # '|| return $?' is used to suppress duplicate calls to the ERR trap when loading the compiled rules
 # file (see the comments on the ERR trap below).
@@ -235,7 +235,7 @@ load()
         cat "$TempRulesFile" >> "$RulesFile"
       else
         Error='y'
-        echo "${Files[Index]} returned exit status $RET, will ignore and continue" >&2
+        echo "'${Files[Index]}' returned exit status $RET, will ignore and continue" >&2
       fi
       rm -f "$TempRulesFile"
     fi
@@ -269,8 +269,8 @@ run_compiled()
 }
 
 # Functions used to implement 'diff'
-SavedRulesFile="$SavedRulesPath$RulesFilesBaseName"
-save()
+DiffRulesFile="$DiffRulesPath$RulesFilesBaseName"
+save_for_diff()
 {
   local RulesFile="$1"
   [ -e "$RulesFile" ] || : > "$RulesFile"  # Create the rules file if necessary
@@ -312,22 +312,22 @@ save()
 diff_rules()
 {
   # If 'load' has not been called, print all current rules (compare against an empty file)
-  [ -e "$SavedRulesFile" ] || : > "$SavedRulesFile"
+  [ -e "$DiffRulesFile" ] || : > "$DiffRulesFile"
 
   # Save the current rules to a temp file
   local CurRulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
-  save "$CurRulesFile"
+  save_for_diff "$CurRulesFile"
 
-  # Compare the rules saved by 'load' vs the current rules
+  # Compare the rules previously saved by 'load' against the current rules
   if [ "$SideBySide" = 'n' ] ; then
     echo 'Removed Rules:'
     diff --text --minimal --old-line-format='%L' --new-line-format='' --unchanged-line-format='' \
-     "$SavedRulesFile" "$CurRulesFile" || :
+     "$DiffRulesFile" "$CurRulesFile" || :
     echo 'Added Rules:'
     diff --text --minimal --old-line-format='' --new-line-format='%L' --unchanged-line-format='' \
-     "$SavedRulesFile" "$CurRulesFile" || :
+     "$DiffRulesFile" "$CurRulesFile" || :
   else
-    diff -y --text --minimal "$SavedRulesFile" "$CurRulesFile" || :
+    diff -y --text --minimal "$DiffRulesFile" "$CurRulesFile" || :
   fi
 
   rm -f "$CurRulesFile"
@@ -341,7 +341,7 @@ case $Command in
     echo -n -e '\n\n\n' >> "$RulesFile"
     load
     run_compiled
-    save "$SavedRulesFile"
+    save_for_diff "$DiffRulesFile"
   ;;
   flush)
     start_compile
@@ -352,7 +352,7 @@ case $Command in
     start_compile
     flush_all
     run_compiled
-    rm -f "$SavedRulesFile"
+    rm -f "$DiffRulesFile"
   ;;
   diff)
     diff_rules

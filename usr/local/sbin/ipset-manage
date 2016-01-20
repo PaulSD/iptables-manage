@@ -1,0 +1,306 @@
+#!/bin/bash
+
+# Partial file name, used as a template for some files created by this script
+IpsetsFilesBaseName='ipset-manage'
+# Path under which ipset files will be saved for later use by 'diff' (Should end with '/')
+DiffIpsetsPath='/run/'
+
+ScriptName="$(basename "$0")"
+Usage()
+{
+  if [ -n "$1" ] ; then
+    echo "ERROR: $1" >&2
+    echo >&2
+  fi
+  cat <<END >&2
+Usage: $ScriptName <command> [options]
+
+Commands:
+
+  load             Load all *.ipset and *.ipset-saved files from /etc/ipset.d/
+
+  save [name]      If name is provided, save the specified ipset to
+                   "/etc/ipset.d/<name>.ipset-saved", otherwise update all
+                   /etc/ipset.d/*.ipset-saved files.  Sets are saved such that
+                   they will be loaded into a temporary ipset then swapped into
+                   place rather than loaded directly (as they would be if they
+                   were saved using \`ipset save\`).
+
+  flush [name]     If name is provided, destroy the specified ipset, otherwise
+                   destroy all ipsets
+
+  diff             Show changes made to the running ipsets since the last call to
+                   'load' or 'save'
+
+  For compatibility with netfilter-persistent and SysV-style init scripts,
+  'save' and 'flush' are implemented as a standard options, 'start' is an alias
+  for 'load', 'stop' is an alias for 'save', and 'restart', 'reload', and
+  'force-reload' run 'save' then 'load'.
+
+Options:
+
+  -s, -y, --side-by-side
+                   With 'diff', print a side-by-side diff instead of the default
+                   lists of removed and added rules
+
+END
+  exit 1
+}
+
+# Ensure this script is being run as root
+if [ $(id -u) -ne 0 ] ; then
+  echo "This script must be run as root" >&2
+  exit 1
+fi
+
+# Parse command-line arguments
+[ $# -eq 0 ] && Usage
+Command=
+case $1 in
+  load|start)
+    Command='load'
+  ;;
+  save|stop)
+    # You might expect 'stop' to both save and flush the ipsets.  However, 'stop' is called when the
+    # netfilter-persistent package is upgraded, and we don't really want to flush ipsets during
+    # package upgrades, so we only save the ipsets.
+    Command='save'
+    if [ "$1" = 'stop' -o $# -eq 1 -o "${2:0:1}" = '-' ] ; then
+      SaveSet=
+    else
+      shift
+      SaveSet="$1"
+    fi
+  ;;
+  flush)
+    Command='flush'
+    if [ -o $# -eq 1 -o "${2:0:1}" = '-' ] ; then
+      FlushSet=
+    else
+      shift
+      FlushSet="$1"
+    fi
+  ;;
+  diff)
+    Command='diff'
+  ;;
+  restart|reload|force-reload)
+    Command='save_load'
+  ;;
+  -h|--help)
+    Usage
+  ;;
+  -*)
+    Usage
+  ;;
+  *)
+    Usage "Invalid command '$1'"
+  ;;
+esac
+shift
+SideBySide='n'
+while [ $# -gt 0 ] ; do
+  case $1 in
+    -s|-y|--side-by-side)
+      [ "$Command" = 'diff' ] || Usage "'$1' can only be used with 'diff'"
+      SideBySide='y'
+    ;;
+    -h|--help)
+      Usage
+    ;;
+    *)
+      Usage "Invalid option '$1'"
+    ;;
+  esac
+  shift
+done
+
+Error='n'
+
+# Safely obtain the list of /etc/ipset.d/*/*.ipset-saved and *.ipset files
+# (Properly handle path/file names containing spaces, newlines, and other odd characters)
+find_files()
+{
+  local Select="$1"  # Should be 'all' or 'saved'
+
+  local FilterPred ; local Filter
+  if [ "$Select" = 'saved' ] ; then
+    FilterPred='-name'
+    Filter='*.ipset-saved'
+  else
+    FilterPred='-regex'
+    Filter='.*\.ipset\(-saved\)?'
+  fi
+
+  unset Files ; local File ; local i ; local IFS=
+  while read -u3 -r -d $'\0' File ; do
+    Files[i++]="$File"
+  done 3< <(find -L /etc/ipset.d/ -type f "$FilterPred" "$Filter" -print0 | sort --zero-terminated)
+}
+
+load()
+{
+  find_files all
+  local Index ; local RET
+  for Index in "${!Files[@]}" ; do
+    ipset restore -file "${Files[Index]}" ; RET=$?
+    if [ $RET -ne 0 ] ; then
+      Error='y'
+      echo "Loading '${Files[Index]}' failed with exit status $RET" >&2
+      echo "(Will ignore and continue)" >&2
+    fi
+  done
+}
+
+# Save an ipset such that it will be loaded into a temporary ipset then swapped into place rather
+# than being loaded directly (as it would be if it were saved using `ipset save`).
+Script="$(cat <<'END'
+  if (s/^create $set //) {
+    # When loading the ipset, if a previous load failed, then wipe the temporary "-new" ipset
+    # (`ipset destroy` will fail if the ipset doesn't exist, so run `ipset create -exist` first)
+    print "create -exist $set-new $_";
+    print "destroy $set-new\n";
+    # Create the temporary "-new" ipset
+    print "create $set-new $_";
+    $create_args = $_;
+  } else { s/^(\w+ $set) /$1-new /; print; }
+  if (eof) {
+    # Replace any existing ipset with the temporary "-new" ipset
+    # (`ipset swap` will fail if the ipset doesn't exist, so run `ipset create -exist` first)
+    print "create -exist $set $create_args";
+    print "swap $set-new $set\n";
+    print "destroy $set-new\n";
+  }
+END
+)"
+save_ipset()
+{
+  local SetName="$1" ; local File="$2"
+  mkdir -p "$(dirname "$File")"
+
+  local IpsetFile="$(mktemp "${File}.tmp.XXX")"
+  chmod o-rwx "$IpsetFile"
+  ipset save "$SetName" -file "$IpsetFile" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Saving ipset '$SetName' to '$File' failed with exit status $RET" >&2
+    rm -f "$IpsetFile"
+    return $RET
+  fi
+
+  local NewFile="$(mktemp "${File}.new.XXX")"
+  chmod o-rwx "$NewFile"
+  perl -n -e "\$set=\"$SetName\"; $Script" "$IpsetFile" > "$NewFile" ; RET=$?
+  rm -f "$IpsetFile";
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Processing ipset '$SetName' into '$File' failed with exit status $RET" >&2
+    rm -f "$NewFile"
+    return $RET
+  fi
+
+  mv "$NewFile" "$File" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Writing ipset '$SetName' to '$File' failed with exit status $RET" >&2
+    rm -f "$NewFile"
+    return $RET
+  fi
+
+  return 0
+}
+save()
+{
+  local SetName="$1"  # If empty, all *.ipset-saved sets will be saved again
+
+  if [ "$SetName" != '' ] ; then
+    save_ipset "$SetName" "/etc/ipset.d/${SetName}.ipset-saved"
+  else
+    find_files saved
+    local Index ; local RET
+    for Index in "${!Files[@]}" ; do
+      SetName="$(basename "${Files[Index]}")" ; SetName="${SetName%.ipset-saved}"
+      save_ipset "$SetName" "${Files[Index]}" ; RET=$?
+      [ $RET -ne 0 ] && echo "(Will ignore and continue)" >&2
+    done
+  fi
+}
+
+flush()
+{
+  local SetName="$1"  # If empty, all sets will be flushed
+
+  ipset destroy ${SetName:+"$SetName"} ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    [ "$SetName" != '' ] \
+     && echo "Destroying ipset '$SetName' failed with exit status $RET" >&2 \
+     || echo "Destroying all ipsets failed with exit status $RET" >&2
+  fi
+}
+
+# Functions used to implement 'diff'
+DiffIpsetsFile="$DiffIpsetsPath$IpsetsFilesBaseName"
+save_for_diff()
+{
+  local IpsetsFile="$1"
+  [ -e "$IpsetsFile" ] || : > "$IpsetsFile"  # Create the ipsets file if necessary
+  chmod o-rwx "$IpsetsFile"
+
+  ipset save -file "$IpsetsFile" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Saving all ipsets to '$IpsetsFile' for diff failed with exit status $RET" >&2
+    rm -f "$IpsetFile"
+    return
+  fi
+}
+diff_ipsets()
+{
+  # If 'load' has not been called, print all current ipsets (compare against an empty file)
+  [ -e "$DiffIpsetsFile" ] || : > "$DiffIpsetsFile"
+
+  # Save the current ipsets to a temp file
+  local CurIpsetsFile="$(mktemp --tmpdir "$IpsetsFilesBaseName.XXX")"
+  save_for_diff "$CurIpsetsFile"
+
+  # Compare the ipsets previously saved by 'load' against the current rules
+  if [ "$SideBySide" = 'n' ] ; then
+    echo 'Removed ipset entries:'
+    diff --text --minimal --old-line-format='%L' --new-line-format='' --unchanged-line-format='' \
+     "$DiffIpsetsFile" "$CurIpsetsFile" || :
+    echo 'Added ipset entries:'
+    diff --text --minimal --old-line-format='' --new-line-format='%L' --unchanged-line-format='' \
+     "$DiffIpsetsFile" "$CurIpsetsFile" || :
+  else
+    diff -y --text --minimal "$DiffIpsetsFile" "$CurIpsetsFile" || :
+  fi
+
+  rm -f "$CurIpsetsFile"
+}
+
+# Perform the specified command
+case $Command in
+  load)
+    load
+    save_for_diff "$DiffIpsetsFile"
+  ;;
+  save)
+    save ${SaveSet:+"$SaveSet"}
+    save_for_diff "$DiffIpsetsFile"
+  ;;
+  flush)
+    flush ${FlushSet:+"$FlushSet"}
+    rm -f "$DiffIpsetsFile"
+  ;;
+  diff)
+    diff_ipsets
+  ;;
+  save_load)
+    save ${SaveSet:+"$SaveSet"}
+    load
+    save_for_diff "$DiffIpsetsFile"
+  ;;
+esac
+
+[ "$Error" = 'n' ] && exit 0 || exit 2

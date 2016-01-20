@@ -2,23 +2,24 @@
 
 The standard iptables-restore program is rather limited in that it requires all rules to be listed in a single file, and it does not support mixing IPv4 and IPv6 rules.  This becomes particularly problematic in large-scale deployments, where a standard set of baseline rules for all systems (that typically apply to both IPv4 and IPv6 traffic), a standard set of baseline rules per system class/type, and a local set of system-specific rules need to be merged and loaded in a simple, clean, and maintainable manner.  Several tools (such as ufw) are available which attempt to solve this problem by hiding iptables behind an abstraction layer.  However, if any non-trivial iptables rules are needed, the abstraction layer typically gets in the way more than it helps.
 
-To facilitate better iptables rule management without adding a new abstraction layer, /usr/local/sbin/ip46tables-manage supports mixed IPv4/IPv6 rules and will load iptables rules from multiple files under /etc/iptables.d/.  To minimize any need to coordinate the creation/ordering/contents of these rules files to ensure proper rule ordering, a set of rules file conventions is laid out in /etc/iptables.d/ReadMe, and some basic framework files and example baseline files are provided.  An ip46tables script is also provided to facilitate configuring mixed IPv4/IPv6 rules from the command line.
+To facilitate better iptables rule management without adding a new abstraction layer, /usr/local/sbin/ip46tables-manage supports mixed IPv4/IPv6 rules and will load iptables rules from multiple files under /etc/iptables.d/.  To minimize any need to coordinate the creation/ordering/contents of these rules files to ensure proper rule ordering, a set of rules file conventions is laid out in /etc/iptables.d/ReadMe, and some basic framework files and example baseline files are provided.  An ip46tables script is also provided to facilitate configuring mixed IPv4/IPv6 rules from the command line.  If ipset is being used, /usr/local/sbin/ipset-manage supports loading and saving ipsets in files under /etc/ipset.d/.
 
 ## Installation
 
 ```bash
-cp usr/local/sbin/ip*tables* /usr/local/sbin/
+cp usr/local/sbin/* /usr/local/sbin/
 ln -s /usr/local/sbin/ip46tables-manage /usr/local/sbin/iptables-manage
-chown root:root /usr/local/sbin/ip*tables*
-chmod 755 /usr/local/sbin/ip*tables*
+chown root:root /usr/local/sbin/ip*tables* /usr/local/sbin/ipset-manage
+chmod 755 /usr/local/sbin/ip*tables* /usr/local/sbin/ipset-manage
 
-mkdir -p /etc/iptables.d/
+mkdir -p /etc/iptables.d/ /etc/ipset.d/
 cp etc/iptables.d/* /etc/iptables.d/
-chown -R root:root /etc/iptables.d/
-chmod -R o-rwx /etc/iptables.d/
+chown -R root:root /etc/iptables.d/ /etc/ipset.d/
+chmod -R o-rwx /etc/iptables.d/ /etc/ipset.d/
 
 sudo apt-get install netfilter-persistent
 ln -s /usr/local/sbin/ip46tables-manage /usr/share/netfilter-persistent/plugins.d/20-ip46tables-manage
+ln -s /usr/local/sbin/ipset-manage /usr/share/netfilter-persistent/plugins.d/15-ipset-manage
 ```
 
 ## Basic Usage
