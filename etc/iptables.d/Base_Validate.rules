@@ -1,10 +1,19 @@
-# Some ICMP packets are required for core protocol functionality such as Path
-# MTU Discovery, and dropping or rejecting them may cause strange and hard to
-# debug problems.  Those required ICMP packets will match this rule, as they are
-# RELATED to other non-ICMP connections.  If this rule is disabled or not used
-# in certain cases, it is important to ensure that some other rule is used to
-# ACCEPT those ICMP packets.  (ping does not match this rule and always requires
-# a separate rule, however it is not strictly required like other ICMP packets.)
+# Some ICMPv6 packets must be ACCEPTed for Neighbor Discovery to work.  IPv4 ARP
+# packets are processed by the kernel without hitting iptables.
+ip6tables --append Validate --protocol ICMPv6 --icmpv6-type router-solicitation --jump ACCEPT
+ip6tables --append Validate --protocol ICMPv6 --icmpv6-type router-advertisement --jump ACCEPT
+ip6tables --append Validate --protocol ICMPv6 --icmpv6-type neighbor-solicitation --jump ACCEPT
+ip6tables --append Validate --protocol ICMPv6 --icmpv6-type neighbor-advertisement --jump ACCEPT
+ip6tables --append Validate --protocol ICMPv6 --icmpv6-type redirect --jump ACCEPT
+
+# Some other ICMP packets are required for core protocol functionality such as
+# Path MTU Discovery, and dropping or rejecting them may cause strange and hard
+# to debug problems.  Those required ICMP packets will match this rule, as they
+# are RELATED to other non-ICMP connections.  If this rule is disabled or not
+# used in certain cases, it is important to ensure that some other rule is used
+# to ACCEPT those ICMP packets.  (ping does not match this rule and always
+# requires a separate rule, however it is not strictly required like other ICMP
+# packets.)
 ip46tables --append Validate --match conntrack --ctstate ESTABLISHED,RELATED --jump ACCEPT
 
 # Drop INVALID packets, except INVALID SYN which must be rejected to prevent spoofing
