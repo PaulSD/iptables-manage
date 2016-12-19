@@ -9,7 +9,6 @@ ip46tables --append OUTPUT --jump ONoMatch
 ip46tables --append FORWARD --jump FNoMatch
 
 # Many users do not configure OUTPUT rules, so NoMatch is only applied to INPUT
-# and FORWARD packets by default.  If OUTPUT rules are configured, you may want
-# add NoMatch to ONoMatch as well.
+# packets by default.  If OUTPUT rules are configured, you may want add NoMatch
+# to ONoMatch as well.
 ip46tables --append INoMatch --jump NoMatch
-ip46tables --append FNoMatch --jump NoMatch

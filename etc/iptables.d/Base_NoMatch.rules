@@ -1,21 +1,22 @@
 # Windows frequently broadcasts on UDP ports 137/138 for NETBIOS.  These are
 # harmless and would generate lots of logs, so don't bother logging them.
-ip46tables --insert NoMatch --protocol UDP --destination-port 137:138 --jump REJECT
+ip46tables --insert INoMatch --protocol UDP --destination-port 137:138 --jump REJECT
 
 # DropBox clients frequently broadcast on UDP port 17500.  Also harmless and
 # noisy, so don't bother logging them.
-ip46tables --insert NoMatch --protocol UDP --destination-port 17500 --jump REJECT
+ip46tables --insert INoMatch --protocol UDP --destination-port 17500 --jump REJECT
 
 # IGMP (multicast management) can also be rather noisy, so don't log it either.
-ip46tables --insert NoMatch --protocol 2 --jump REJECT
+ip46tables --insert INoMatch --protocol 2 --jump REJECT
 
 # Log everything that did not match any other rules
-# To skip logging for some packets, '--insert' rules above this rule which
-# REJECT the traffic that should not be logged.  Use '--reject-with tcp-reset'
-# for TCP packets per the comments below.
+# To skip logging for some packets, add '--insert' rules above these rules which
+# DROP or REJECT (as described in the comments below) the traffic that should
+# not be logged.
 ip46tables --append NoMatch --jump LOG --log-prefix 'iptables NoMatch: '
+ip46tables --append FNoMatch --jump LOG --log-prefix 'iptables FNoMatch: '
 
-# Reject everything that did not match any other rules
+# Reject INPUT (and possibly OUTPUT) packets that did not match any other rules
 # TCP packets are rejected with TCP RST rather than ICMP Port Unreachable
 # because that is what Linux does by default when a TCP port is unused and
 # iptables is not blocking it.  (This makes it harder for an attacker to
@@ -23,3 +24,9 @@ ip46tables --append NoMatch --jump LOG --log-prefix 'iptables NoMatch: '
 # but are not currently being listened on.)
 ip46tables --append NoMatch --protocol TCP --jump REJECT --reject-with tcp-reset
 ip46tables --append NoMatch --jump REJECT
+
+# Drop FORWARD packets that did not match any other rules
+# Most routers on the public internet silently drop packets instead of returning
+# ICMP Host Unreachable if a specific host on a locally-connected network is
+# unreachable.
+ip46tables --append FNoMatch --jump DROP

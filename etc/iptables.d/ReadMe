@@ -68,8 +68,10 @@ To facilitate this, the following files/chains are configured by default:
   For rules that should be applied after all of the above rules.  For example,
   rules that log and/or reject/drop any packets that are not explicitly allowed
   above.  Similar to the Validate chain, the NoMatch chain is applied only to
-  INPUT and FORWARD packets by default, but it may be applied to OUTPUT packets
-  as well.
+  INPUT packets by default, but it may be applied to OUTPUT packets as well if
+  OUTPUT rules are configured.  It could also be applied to FORWARD packets,
+  although FORWARD packets typically require different reject/drop behavior than
+  INPUT/OUTPUT packets, so that is unlikely to be desirable.
 Additional numbered files may be added to configure additional chains that will
 be evaluated before/between/after the above chains.
 
