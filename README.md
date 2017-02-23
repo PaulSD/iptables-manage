@@ -20,6 +20,9 @@ chmod -R o-rwx /etc/iptables.d/ /etc/ipset.d/
 sudo apt-get install netfilter-persistent
 ln -s /usr/local/sbin/ip46tables-manage /usr/share/netfilter-persistent/plugins.d/20-ip46tables-manage
 ln -s /usr/local/sbin/ipset-manage /usr/share/netfilter-persistent/plugins.d/15-ipset-manage
+
+cp etc/rsyslog.d/* /etc/rsyslog.d/
+cp etc/logrotate.d/* /etc/logrotate.d/
 ```
 
 ## Basic Usage

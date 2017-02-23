@@ -1,0 +1,13 @@
+/var/log/iptables
+{
+  rotate 4
+  weekly
+  size 2M
+  missingok
+  notifempty
+  compress
+  delaycompress
+  postrotate
+    reload rsyslog >/dev/null 2>&1 || true
+  endscript
+}
