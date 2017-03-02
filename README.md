@@ -23,6 +23,17 @@ ln -s /usr/local/sbin/ipset-manage /usr/share/netfilter-persistent/plugins.d/15-
 
 cp etc/rsyslog.d/* /etc/rsyslog.d/
 cp etc/logrotate.d/* /etc/logrotate.d/
+# See: https://bugs.launchpad.net/ubuntu/+source/rsyslog/+bug/1531622
+# and: http://stackoverflow.com/a/25289586/1476175
+perl -i -p \
+ -e 'BEGIN { $params =
+  "permitnonkernelfacility=\"on\" " .
+  "parsekerneltimestamp=\"on\" " .
+  "keepkerneltimestamp=\"off\"";
+ } ' \
+ -e 's/(module\(load="imklog")(?:[^)]*)\)/$1 $params)/;' \
+ -e 's/^(?!#)(.*\$KLogPermitNonKernelFacility.*)$/#$1/;' \
+ /etc/rsyslog.conf
 ```
 
 ## Basic Usage
