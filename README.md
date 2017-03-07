@@ -52,13 +52,6 @@ ip46tables-manage diff
 
 ## Additional Example Rule Files
 
-### Allow NTP
-```bash
-cat <<END > /etc/iptables.d/NTP.rules
-ip46tables --append INormal --protocol UDP --destination-port 123 --jump ACCEPT
-END
-```
-
 ### Allow SSH, but limit connections to 3/minute short term or 2/minute long term from any single host
 ```bash
 cat <<END > /etc/iptables.d/SSH.rules
