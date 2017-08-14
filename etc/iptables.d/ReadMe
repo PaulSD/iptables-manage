@@ -40,6 +40,9 @@ ordered files whose names begin with a number, and rules be added to those
 chains using unordered files whose names begins with a letter.
 
 To facilitate this, the following files/chains are configured by default:
+00_Mangle.rules : PreNormal CheckInterface (in the "mangle" table)
+  For reverse path checking.  PreNormal may be used to MARK packets for
+  rule-based routing before reverse path checking is performed.
 05_Block.rules : IBlock OBlock FBlock IFBlock
   For rules that explicitly reject/drop unwanted packets.  For example, this may
   be used to block all traffic from a malicious IP address, or to block the use

@@ -1,3 +1,8 @@
 # Accept all INPUT loopback (lo) traffic, without running it through the
 # Validate chain
 ip46tables --append IInterfaces --in-interface lo --jump ACCEPT
+
+# Drop packets that are received on a different interface than a reply would be sent to
+ip46tables --table mangle --append CheckInterface --match rpfilter --validmark --jump RETURN
+ip46tables --table mangle --append CheckInterface --jump LOG --log-prefix 'iptables BadIf: '
+ip46tables --table mangle --append CheckInterface --jump DROP

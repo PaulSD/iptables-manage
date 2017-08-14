@@ -1,0 +1,5 @@
+ip46tables --table mangle --new-chain PreNormal
+ip46tables --table mangle --new-chain CheckInterface
+
+ip46tables --table mangle --append PREROUTING --jump PreNormal
+ip46tables --table mangle --append PREROUTING --jump CheckInterface
