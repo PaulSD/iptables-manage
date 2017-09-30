@@ -6,6 +6,10 @@ ip46tables --insert INoMatch --protocol UDP --destination-port 137:138 --jump RE
 # noisy, so don't bother logging them.
 ip46tables --insert INoMatch --protocol UDP --destination-port 17500 --jump REJECT
 
+# Some Samsung TVs broadcast on TCP port 15600.  Also harmless and noisy, so
+# don't bother logging them.
+ip46tables --insert INoMatch --protocol TCP --destination-port 17500 --jump REJECT
+
 # IGMP (multicast management) can also be rather noisy, so don't log it either.
 ip46tables --insert INoMatch --protocol 2 --jump REJECT
 
