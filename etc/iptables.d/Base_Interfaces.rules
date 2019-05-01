@@ -1,6 +1,7 @@
-# Accept all INPUT loopback (lo) traffic, without running it through the
-# Validate chain
+# Accept all INPUT/OUTPUT loopback (lo) traffic, without running it through the
+# Validate chains
 ip46tables --append IInterfaces --in-interface lo --jump ACCEPT
+ip46tables --append OInterfaces --out-interface lo --jump ACCEPT
 
 # Drop packets that are received on a different interface than a reply would be sent to
 ip46tables --table mangle --append CheckInterface --match rpfilter --validmark --jump RETURN
