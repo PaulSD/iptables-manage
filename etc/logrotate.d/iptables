@@ -10,6 +10,6 @@
   su syslog syslog
   create 640 syslog syslog
   postrotate
-    reload rsyslog >/dev/null 2>&1 || true
+    /bin/systemctl kill -s HUP rsyslog.service >/dev/null 2>&1 || true
   endscript
 }
