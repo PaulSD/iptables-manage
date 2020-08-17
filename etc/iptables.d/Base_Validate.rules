@@ -26,8 +26,10 @@ ip46tables --append Validate --match conntrack ! --ctstate NEW --protocol TCP --
 ip46tables --append Validate --match conntrack ! --ctstate NEW,UNTRACKED --match limit --limit 6/m --jump LOG --log-prefix 'iptables INVALID: '
 ip46tables --append Validate --match conntrack ! --ctstate NEW,UNTRACKED --jump DROP
 
-# Drop TCP packets (other than SYN) that aren't associated with an established connection
+# Reject TCP packets (other than SYN) that aren't associated with an established connection
 # (See http://www.frozentux.net/iptables-tutorial/iptables-tutorial.html#NEWNOTSYN )
+# (Reject rather than drop to fail quickly instead of waiting for connection timeout if a legitimate
+# connection tracking entry is lost)
 # (Don't log closing ACK packets that are marked NEW)
-ip46tables --append Validate --protocol TCP ! --syn --match tcp ! --tcp-flags SYN,ACK,FIN,RST ACK --match limit --limit 6/m --jump LOG --log-prefix 'iptables NEW \!SYN: '
-ip46tables --append Validate --protocol TCP ! --syn --jump DROP
+ip46tables --append Validate --protocol TCP ! --syn --match tcp ! --tcp-flags ALL ACK --match limit --limit 6/m --jump LOG --log-prefix 'iptables NEW \!SYN: '
+ip46tables --append Validate --protocol TCP ! --syn --jump REJECT --reject-with tcp-reset
