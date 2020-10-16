@@ -17,17 +17,25 @@ cp etc/iptables.d/* /etc/iptables.d/
 chown -R root:root /etc/iptables.d/ /etc/ipset.d/
 chmod -R o-rwx /etc/iptables.d/ /etc/ipset.d/
 
+cp etc/rsyslog.d/* /etc/rsyslog.d/
+cp etc/logrotate.d/* /etc/logrotate.d/
+
+# For Ubuntu/Debian/etc:
 sudo apt-get install netfilter-persistent
 ln -s /usr/local/sbin/ip46tables-manage /usr/share/netfilter-persistent/plugins.d/20-ip46tables-manage
 ln -s /usr/local/sbin/ipset-manage /usr/share/netfilter-persistent/plugins.d/15-ipset-manage
-
-cp etc/rsyslog.d/* /etc/rsyslog.d/
-cp etc/logrotate.d/* /etc/logrotate.d/
 # See: https://bugs.launchpad.net/ubuntu/+source/rsyslog/+bug/1531622
 perl -i -p \
  -e 's/(module\(load="imklog")(?:[^)]*)\)/$1 permitnonkernelfacility="on")/;' \
  -e 's/^(?!#)(.*\$KLogPermitNonKernelFacility.*)$/#$1/;' \
  /etc/rsyslog.conf
+
+# For RHEL/Fedora/etc:
+cp etc/systemd/system/* /etc/systemd/system/
+chcon -t systemd_unit_file_t /etc/systemd/system/ip46tables.service /etc/systemd/system/ipset.service
+systemctl daemon-reload
+systemctl reenable ip46tables.service
+systemctl reenable ipset.service
 ```
 
 ## Basic Usage
@@ -87,7 +95,7 @@ ip6tables --insert FNormal --protocol ICMPv6 --jump ACCEPT
 END
 ```
 
-# Allow UPnP
+### Allow UPnP
 ```bash
 cat <<END > /etc/iptables.d/UPnP.rules
 # Additional ports may be required depending on the remote device's implementation

@@ -1,0 +1,16 @@
+[Unit]
+Description=ipset manager
+
+DefaultDependencies=no
+Before=network-pre.target ip46tables.service
+Wants=network-pre.target
+Wants=systemd-modules-load.service local-fs.target
+After=systemd-modules-load.service local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ipset-manage start
+
+[Install]
+WantedBy=default.target
