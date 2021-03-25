@@ -1,4 +1,4 @@
 #!/bin/sh
-/sbin/iptables "$@" ; RET=$?
-/sbin/ip6tables "$@" ; RET=$(($RET?$RET:$?))
+/usr/sbin/iptables "$@" ; RET=$?
+/usr/sbin/ip6tables "$@" ; RET=$(($RET?$RET:$?))
 exit $RET
