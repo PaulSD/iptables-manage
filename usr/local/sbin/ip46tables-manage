@@ -192,18 +192,23 @@ flush_table()
     echo "$Command -t '$Table' --policy '$Chain' ACCEPT" >> "$RulesFile"
   done
 }
+IP4TablesNames= IP6TablesNames=
+[ -r /proc/net/ip_tables_names ] && IP4TablesNames="$(cat /proc/net/ip_tables_names)"
+[ -r /proc/net/ip6_tables_names ] && IP6TablesNames="$(cat /proc/net/ip6_tables_names)"
+[ -z "$IP4TablesNames" ] && IP4TablesNames="$(echo -e 'filter\nnat\nmangle\nraw')"
+[ -z "$IP6TablesNames" ] && IP6TablesNames="$(echo -e 'filter\nnat\nmangle\nraw')"
 flush()
 {
   local Table="$1"
-  grep -l "$Table" /proc/net/ip_tables_names &>/dev/null && flush_table ip4tables "$Table"
-  grep -l "$Table" /proc/net/ip6_tables_names &>/dev/null && flush_table ip6tables "$Table"
+  echo "$IP4TablesNames" | grep -q "$Table" && flush_table ip4tables "$Table"
+  echo "$IP6TablesNames" | grep -q "$Table" && flush_table ip6tables "$Table"
 }
 flush_all()
 {
-  for Table in $(sort /proc/net/ip_tables_names 2>/dev/null) ; do
+  for Table in $(echo "$IP4TablesNames" | sort) ; do
     flush_table ip4tables "$Table"
   done
-  for Table in $(sort /proc/net/ip6_tables_names 2>/dev/null) ; do
+  for Table in $(echo "$IP6TablesNames" | sort) ; do
     flush_table ip6tables "$Table"
   done
 }
@@ -278,7 +283,7 @@ save_for_diff()
 
   local ip4RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip4.XXX")"
   chmod o-rwx "$ip4RulesFile"
-  for Table in $(sort /proc/net/ip_tables_names 2>/dev/null || :) ; do
+  for Table in $(echo "$IP4TablesNames" | sort) ; do
     ip4tables -t "$Table" -S | while read Line ; do
       echo "-t \"$Table\" $Line"
     done
@@ -286,7 +291,7 @@ save_for_diff()
 
   local ip6RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip6.XXX")"
   chmod o-rwx "$ip6RulesFile"
-  for Table in $(sort /proc/net/ip6_tables_names 2>/dev/null || :) ; do
+  for Table in $(echo "$IP6TablesNames" | sort) ; do
     ip6tables -t "$Table" -S | while read Line ; do
       echo "-t \"$Table\" $Line"
     done
