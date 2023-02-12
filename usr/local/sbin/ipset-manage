@@ -176,10 +176,26 @@ END
 save_ipset()
 {
   local SetName="$1" ; local File="$2"
-  mkdir -p "$(dirname "$File")"
+  mkdir -p "$(dirname "$File")" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Creating path for '$File' failed with exit status $RET" >&2
+    return $RET
+  fi
 
-  local IpsetFile="$(mktemp "${File}.tmp.XXX")"
-  chmod o-rwx "$IpsetFile"
+  local IpsetFile="$(mktemp "${File}.tmp.XXX")" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Generating temp file for '$File' failed with exit status $RET" >&2
+    return $RET
+  fi
+  chmod o-rwx "$IpsetFile" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Setting perms on '$IpsetFile' failed with exit status $RET" >&2
+    rm -f "$IpsetFile"
+    return $RET
+  fi
   ipset save "$SetName" -file "$IpsetFile" ; RET=$?
   if [ $RET -ne 0 ] ; then
     Error='y'
@@ -188,10 +204,23 @@ save_ipset()
     return $RET
   fi
 
-  local NewFile="$(mktemp "${File}.new.XXX")"
-  chmod o-rwx "$NewFile"
+  local NewFile="$(mktemp "${File}.new.XXX")" ; RET=$?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Generating temp file for '$File' failed with exit status $RET" >&2
+    rm -f "$IpsetFile"
+    return $RET
+  fi
+  chmod o-rwx "$NewFile" || return $?
+  if [ $RET -ne 0 ] ; then
+    Error='y'
+    echo "Setting perms on '$NewFile' failed with exit status $RET" >&2
+    rm -f "$IpsetFile"
+    rm -f "$NewFile"
+    return $RET
+  fi
   perl -n -e "\$set=\"$SetName\"; $Script" "$IpsetFile" > "$NewFile" ; RET=$?
-  rm -f "$IpsetFile";
+  rm -f "$IpsetFile"
   if [ $RET -ne 0 ] ; then
     Error='y'
     echo "Processing ipset '$SetName' into '$File' failed with exit status $RET" >&2

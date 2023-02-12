@@ -200,15 +200,15 @@ IP4TablesNames= IP6TablesNames=
 flush()
 {
   local Table="$1"
-  echo "$IP4TablesNames" | grep -q "$Table" && flush_table ip4tables "$Table"
-  echo "$IP6TablesNames" | grep -q "$Table" && flush_table ip6tables "$Table"
+  printf '%s' "$IP4TablesNames" | grep -q -- "$Table" && flush_table ip4tables "$Table"
+  printf '%s' "$IP6TablesNames" | grep -q -- "$Table" && flush_table ip6tables "$Table"
 }
 flush_all()
 {
-  for Table in $(echo "$IP4TablesNames" | sort) ; do
+  for Table in $(printf '%s' "$IP4TablesNames" | sort) ; do
     flush_table ip4tables "$Table"
   done
-  for Table in $(echo "$IP6TablesNames" | sort) ; do
+  for Table in $(printf '%s' "$IP6TablesNames" | sort) ; do
     flush_table ip6tables "$Table"
   done
 }
@@ -264,7 +264,7 @@ run_compiled()
       Error='y'
       echo "Error running: $Command" >&2
     }
-    trap 'on_error "${FUNCNAME[0]}" "$(eval echo "$BASH_COMMAND")"' ERR ; set -E
+    trap 'on_error "${FUNCNAME[0]}" "$(eval printf "\"%s\n\"" "$BASH_COMMAND")"' ERR ; set -E
     source "$RulesFile"
     trap - ERR ; set +E
   fi
@@ -283,17 +283,17 @@ save_for_diff()
 
   local ip4RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip4.XXX")"
   chmod o-rwx "$ip4RulesFile"
-  for Table in $(echo "$IP4TablesNames" | sort) ; do
+  for Table in $(printf '%s' "$IP4TablesNames" | sort) ; do
     ip4tables -t "$Table" -S | while read Line ; do
-      echo "-t \"$Table\" $Line"
+      printf '%s\n' "-t \"$Table\" $Line"
     done
   done > "$ip4RulesFile"
 
   local ip6RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip6.XXX")"
   chmod o-rwx "$ip6RulesFile"
-  for Table in $(echo "$IP6TablesNames" | sort) ; do
+  for Table in $(printf '%s' "$IP6TablesNames" | sort) ; do
     ip6tables -t "$Table" -S | while read Line ; do
-      echo "-t \"$Table\" $Line"
+      printf '%s\n' "-t \"$Table\" $Line"
     done
   done > "$ip6RulesFile"
 
