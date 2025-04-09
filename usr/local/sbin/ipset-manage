@@ -47,9 +47,9 @@ END
   exit 1
 }
 
-# Ensure this script is being run as root
+# Ensure this script is being run as 'root'
 if [ "$(id -u)" -ne 0 ] ; then
-  echo "This script must be run as root" >&2
+  echo "This script must be run as 'root'" >&2
   exit 1
 fi
 
@@ -211,7 +211,7 @@ save_ipset()
     rm -f "$IpsetFile"
     return $RET
   fi
-  chmod o-rwx "$NewFile" || return $?
+  chmod o-rwx "$NewFile" ; RET=$?
   if [ $RET -ne 0 ] ; then
     Error='y'
     echo "Setting perms on '$NewFile' failed with exit status $RET" >&2
@@ -274,7 +274,7 @@ save_for_diff()
 {
   local IpsetsFile="$1"
   [ -e "$IpsetsFile" ] || : > "$IpsetsFile"  # Create the ipsets file if necessary
-  chmod o-rwx "$IpsetsFile"
+  chmod o-rwx "$IpsetsFile" || exit 2
 
   ipset save -file "$IpsetsFile" ; RET=$?
   if [ $RET -ne 0 ] ; then
@@ -290,19 +290,19 @@ diff_ipsets()
   [ -e "$DiffIpsetsFile" ] || : > "$DiffIpsetsFile"
 
   # Save the current ipsets to a temp file
-  local CurIpsetsFile="$(mktemp --tmpdir "$IpsetsFilesBaseName.XXX")"
+  local CurIpsetsFile="$(mktemp --tmpdir "$IpsetsFilesBaseName.XXX")" || exit 2
   save_for_diff "$CurIpsetsFile"
 
   # Compare the ipsets previously saved by 'load' against the current rules
   if [ "$SideBySide" = 'n' ] ; then
     echo 'Removed ipset entries:'
     diff --text --minimal --old-line-format='%L' --new-line-format='' --unchanged-line-format='' \
-     "$DiffIpsetsFile" "$CurIpsetsFile" || :
+     "$DiffIpsetsFile" "$CurIpsetsFile" || true
     echo 'Added ipset entries:'
     diff --text --minimal --old-line-format='' --new-line-format='%L' --unchanged-line-format='' \
-     "$DiffIpsetsFile" "$CurIpsetsFile" || :
+     "$DiffIpsetsFile" "$CurIpsetsFile" || true
   else
-    diff -y --text --minimal "$DiffIpsetsFile" "$CurIpsetsFile" || :
+    diff -y --text --minimal "$DiffIpsetsFile" "$CurIpsetsFile" || true
   fi
 
   rm -f "$CurIpsetsFile"

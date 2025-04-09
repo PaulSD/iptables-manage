@@ -47,9 +47,9 @@ END
   exit 1
 }
 
-# Ensure this script is being run as root
+# Ensure this script is being run as 'root'
 if [ "$(id -u)" -ne 0 ] ; then
-  echo "This script must be run as root" >&2
+  echo "This script must be run as 'root'" >&2
   exit 1
 fi
 
@@ -176,10 +176,8 @@ ip46tables()
 # transaction using `nft -f` after we move to nftables.
 start_compile()
 {
-  set -e
-  RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
-  chmod o-rwx "$RulesFile"
-  set +e
+  RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")" || exit 2
+  chmod o-rwx "$RulesFile" || exit 2
 }
 flush_table()
 {
@@ -232,8 +230,8 @@ load()
       cat "${Files[Index]}" >> "$RulesFile"
     else
       # Run executable files
-      TempRulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")"
-      chmod o-rwx "$TempRulesFile"
+      TempRulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.XXX")" || { Error='y' ; continue ; }
+      chmod o-rwx "$TempRulesFile" || { Error='y' ; continue ; }
       "${Files[Index]}" > "$TempRulesFile" ; RET=$?
       # If exit status is 0, append the output to the rules file
       if [ $RET -eq 0 ] ; then
@@ -281,16 +279,16 @@ save_for_diff()
   [ -e "$RulesFile" ] || : > "$RulesFile"  # Create the rules file if necessary
   chmod o-rwx "$RulesFile"
 
-  local ip4RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip4.XXX")"
-  chmod o-rwx "$ip4RulesFile"
+  local ip4RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip4.XXX")" || exit 2
+  chmod o-rwx "$ip4RulesFile" || exit 2
   for Table in $(printf '%s' "$IP4TablesNames" | sort) ; do
     ip4tables -t "$Table" -S | while read Line ; do
       printf '%s\n' "-t \"$Table\" $Line"
     done
   done > "$ip4RulesFile"
 
-  local ip6RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip6.XXX")"
-  chmod o-rwx "$ip6RulesFile"
+  local ip6RulesFile="$(mktemp --tmpdir "$RulesFilesBaseName.ip6.XXX")" || exit 2
+  chmod o-rwx "$ip6RulesFile" || exit 2
   for Table in $(printf '%s' "$IP6TablesNames" | sort) ; do
     ip6tables -t "$Table" -S | while read Line ; do
       printf '%s\n' "-t \"$Table\" $Line"
@@ -310,7 +308,7 @@ save_for_diff()
 
   # Merge the IP4 and IP6 rules
   diff --text --minimal --old-line-format='ip4tables %L' --new-line-format='ip6tables %L' \
-   --unchanged-line-format='ip46tables %L' "$ip4RulesFile" "$ip6RulesFile" > "$RulesFile" || :
+   --unchanged-line-format='ip46tables %L' "$ip4RulesFile" "$ip6RulesFile" > "$RulesFile" || true
 
   rm -f "$ip4RulesFile" "$ip6RulesFile"
 }
@@ -327,12 +325,12 @@ diff_rules()
   if [ "$SideBySide" = 'n' ] ; then
     echo 'Removed Rules:'
     diff --text --minimal --old-line-format='%L' --new-line-format='' --unchanged-line-format='' \
-     "$DiffRulesFile" "$CurRulesFile" || :
+     "$DiffRulesFile" "$CurRulesFile" || true
     echo 'Added Rules:'
     diff --text --minimal --old-line-format='' --new-line-format='%L' --unchanged-line-format='' \
-     "$DiffRulesFile" "$CurRulesFile" || :
+     "$DiffRulesFile" "$CurRulesFile" || true
   else
-    diff -y --text --minimal "$DiffRulesFile" "$CurRulesFile" || :
+    diff -y --text --minimal "$DiffRulesFile" "$CurRulesFile" || true
   fi
 
   rm -f "$CurRulesFile"
