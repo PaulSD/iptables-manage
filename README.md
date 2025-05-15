@@ -54,11 +54,12 @@ ip46tables-manage diff
 
 ## Additional Example Rule Files
 
-### Allow SSH, but limit connections to 3/minute short term or 2/minute long term from any single host
+### Allow SSH, but limit connections to 10/minute short term or 7/minute long term from any single host
+### (`sshfs -o reconnect ...` retries every 10s, so limit <=6/minute can cause problems after disconnect)
 ```bash
 cat <<END > /etc/iptables.d/SSH.rules
 ip46tables --new-chain ratelimit-SSH
-ip46tables --append ratelimit-SSH --match hashlimit --hashlimit-name SSH --hashlimit-mode srcip --hashlimit-burst 3 --hashlimit-upto 2/m --jump ACCEPT
+ip46tables --append ratelimit-SSH --match hashlimit --hashlimit-name SSH --hashlimit-mode srcip --hashlimit-burst 10 --hashlimit-upto 7/m --jump ACCEPT
 ip46tables --append ratelimit-SSH --match hashlimit --hashlimit-name ratelimit-SSH --hashlimit-mode srcip --hashlimit-burst 1 --hashlimit-upto 6/m --jump LOG --log-prefix 'iptables rl-SSH: '
 ip46tables --append ratelimit-SSH --protocol TCP --jump REJECT --reject-with tcp-reset
 ip46tables --append INormal --protocol TCP --destination-port 22 --syn --jump ratelimit-SSH
