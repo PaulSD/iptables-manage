@@ -150,8 +150,6 @@ done
 # Aliases/wrappers for iptables commands, for use in this script and in rules files.
 # In addition to adding new commands, this also allows us to avoid path searching without adding an
 # explicit path to every iptables command.
-# '|| return $?' is used to suppress duplicate calls to the ERR trap when loading the compiled rules
-# file (see the comments on the ERR trap below).
 ip4tables()
 {
   /usr/sbin/iptables -w 3 "$@"
