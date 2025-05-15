@@ -154,20 +154,20 @@ done
 # file (see the comments on the ERR trap below).
 ip4tables()
 {
-  /usr/sbin/iptables "$@"
+  /usr/sbin/iptables -w 3 "$@"
 }
 iptables()
 {
-  /usr/sbin/iptables "$@"
+  /usr/sbin/iptables -w 3 "$@"
 }
 ip6tables()
 {
-  /usr/sbin/ip6tables "$@"
+  /usr/sbin/ip6tables -w 3 "$@"
 }
 ip46tables()
 {
-  /usr/sbin/iptables "$@" ; RET=$?
-  /usr/sbin/ip6tables "$@" ; RET=$(($RET?$RET:$?))
+  /usr/sbin/iptables -w 3 "$@" ; RET=$?
+  /usr/sbin/ip6tables -w 3 "$@" ; RET=$(($RET?$RET:$?))
   return $RET
 }
 
