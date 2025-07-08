@@ -163,7 +163,7 @@ Script="$(cat <<'END'
     # Create the temporary "-new" ipset
     print "create $set-new $_";
     $create_args = $_;
-  } else { s/^(\w+ $set) /$1-new /; print; }
+  } else { s/^([a-zA-Z0-9_-]+ $set) /$1-new /; print; }
   if (eof) {
     # Replace any existing ipset with the temporary "-new" ipset
     # (`ipset swap` will fail if the ipset doesn't exist, so run `ipset create -exist` first)

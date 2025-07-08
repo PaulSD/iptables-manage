@@ -296,12 +296,12 @@ save_for_diff()
   # Strip some default parameters that don't need to be specified (because they are defaults) and
   # that vary between IP4 and IP6 rules (and thus mess up the merge)
   perl -i -p \
-   -e 's/\s+--reject-with\s+icmp-port-unreachable[ \t]*//;' \
-   -e 's/\s+--connlimit-mask\s+32[ \t]*//;' \
+   -e 's/[ \t]+--reject-with[ \t]+icmp-port-unreachable[ \t]*//;' \
+   -e 's/[ \t]+--connlimit-mask[ \t]+32[ \t]*//;' \
    "$ip4RulesFile"
   perl -i -p \
-   -e 's/\s+--reject-with\s+icmp6-port-unreachable[ \t]*//;' \
-   -e 's/\s+--connlimit-mask\s+128[ \t]*//;' \
+   -e 's/[ \t]+--reject-with[ \t]+icmp6-port-unreachable[ \t]*//;' \
+   -e 's/[ \t]+--connlimit-mask[ \t]+128[ \t]*//;' \
    "$ip6RulesFile"
 
   # Merge the IP4 and IP6 rules
